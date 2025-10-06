@@ -217,13 +217,13 @@ app.post("/api/chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: selectedModel,
-        messages: [
-          { role: "system", 
-            content: `Eres CistBot, asistente de Cistcor. Sé amable y servicial. 
-            Usa esta información contextual:\n${context}` },
-          ...conversations[userId].messages.slice(-3), 
-          { role: "user", content: message }
-        ]
+          messages: [
+            ...conversations[userId].messages.slice(-3),
+            { 
+              role: "user", 
+              content: `Contexto: ${baseContext}\n\nPregunta: ${message}` 
+            }
+          ]
       }),
       signal: controller.signal,
     });
