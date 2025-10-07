@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import Fuse from "fuse.js";
+import fs from "fs";
 
 dotenv.config();
 const app = express();
@@ -20,7 +21,7 @@ app.use(cors({
 
 // ✅ Rate limiting
 const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minuto
+  windowMs: 60 * 1000,
   max: 10,
   message: { error: "Demasiadas solicitudes, intenta más tarde." },
 });
@@ -31,19 +32,22 @@ const ALLOWED_MODELS = process.env.ALLOW_MODELS
   ? process.env.ALLOW_MODELS.split(",")
   : [process.env.AIML_MODEL];
 
-// ✅ Contexto general (para fallback IA)
+// ✅ Cargar company_context.txt (con manejo de errores)
+let companyContext = "";
+try {
+  companyContext = fs.readFileSync("./company_context.txt", "utf8");
+  console.log("✅ company_context.txt cargado correctamente.");
+} catch (err) {
+  console.warn("⚠ No se encontró company_context.txt, usando contexto base.");
+  companyContext = `
+Cistcor Networks es un sistema de gestión de negocios y facturación electrónica.
+Ofrece emisión rápida de comprobantes, control de inventario y reportes en tiempo real.
+`;
+}
+
+// ✅ Contexto base (fallback general)
 const baseContext = `
 Eres CistBot, el asistente virtual de Cistcor Networks. Eres amable, servicial y entusiasta por ayudar a los negocios.
-
-INFORMACIÓN DE LA EMPRESA:
-Cistcor es un sistema de gestión de negocios y facturación electrónica que simplifica la administración de tu negocio y hace más fácil tu trabajo.
-
-BENEFICIOS PRINCIPALES:
-• Emitir comprobantes en segundos ⚡
-• Controlar inventario al instante 📦  
-• Reportes en tiempo real de ventas y compras 📊
-• Cumplimiento fácil con SUNAT ✅
-• Acceso 24/7 desde cualquier dispositivo 🌐
 
 INSTRUCCIONES DE PERSONALIDAD:
 1. Sé amigable, cálido y entusiasta 😊
@@ -51,107 +55,39 @@ INSTRUCCIONES DE PERSONALIDAD:
 3. Formatea respuestas con saltos de línea y viñetas
 4. Muestra empatía e interés genuino en ayudar
 5. Mantén un tono alegre pero profesional
-
-INFORMACIÓN TÉCNICA (solo si es relevante):
-• Requisitos: RUC activo, Internet, dispositivo (PC/tablet) 📋
-• Plataforma: 100% en la nube ☁️
-
-PLANES DE CISTCOR (precios con IGV incluido):
-• 🚀 EMPRENDEDOR: S/59 mensual
-  - 300 comprobantes/mes
-  - Ideal para pequeños negocios
-
-• 📈 ESTÁNDAR: S/97 mensual (MÁS POPULAR)  
-  - 1500 comprobantes/mes
-  - Perfecto para negocios en crecimiento
-
-• 🏆 PROFESIONAL: S/177 mensual
-  - 4000 comprobantes/mes
-  - Para empresas establecidas
-
-Todos incluyen prueba gratis y soporte.
-
-FORMATO DE RESPUESTAS:
-- Usa saltos de línea entre ideas
-- Emplea viñetas (•) para listas
-- Sé claro pero no frío o robótico
-- Responde específicamente a lo preguntado
 `;
 
 // ✅ FAQs
 const faqs = [
-  { 
-    q: "¿qué es cistcor?", 
+  {
+    q: "¿qué es cistcor?",
     a: `¡Hola! 😊 Cistcor es tu sistema de gestión y facturación electrónica que simplifica tu negocio.
 
 Te permite:
 • Emitir comprobantes en segundos ⚡
 • Controlar tu inventario facilmente 📦
 • Obtener reportes en tiempo real de ventas y compras 📊
-• Cumplir fácilmente con SUNAT ✅` 
+• Cumplir fácilmente con SUNAT ✅`
   },
-  { 
-    q: "¿qué es una factura electrónica?", 
-    a: `Una factura electrónica es un comprobante de pago en formato digital que sirve para sustentar la compraventa de bienes o servicios entre empresas y clientes.
-
-✨ Beneficios:
-• Reduce costos de almacenamiento e impresión
-• Es más seguro y confiable
-• Cumple con normativa SUNAT
-• Acceso inmediato desde cualquier dispositivo` 
-  },
-  { 
-    q: "¿qué beneficios obtengo al utilizar cistcor?", 
+  {
+    q: "¿qué beneficios obtengo al utilizar cistcor?",
     a: `¡Muchísimos beneficios! 🎉 Al usar Cistcor:
 
 • Ahorras tiempo al emitir comprobantes en segundos ⚡
 • Conoces tu inventario al instante con un par de clicks 📦
 • Te sientes tranquilo de estar al día con SUNAT ✅
 • Accedes desde cualquier dispositivo las 24 horas 🌐
-• Obtienes reportes de ventas y compras en segundos 📊` 
-  },
-  { 
-    q: "¿qué necesito para implementar cistcor en mi negocio?", 
-    a: `¡Es muy sencillo! Solo necesitas:
-
-1. 📋 Tener un RUC activo y habido
-2. 🌐 Contar con internet en tu negocio  
-3. 💻 Tener una computadora, laptop o Tablet
-
-¡Y listo! Puedes empezar hoy mismo 🚀` 
-  },
-  { 
-    q: "¿cistcor está en la nube o en mi computadora?", 
-    a: `☁️ La plataforma se encuentra en la NUBE, lo que te permite:
-
-• Conectarte en cualquier momento ⏰
-• Acceder desde cualquier dispositivo 📱💻
-• No preocuparte por instalaciones o mantenimiento
-• Trabajar desde tu negocio, casa o donde estés 🌍` 
-  },
-  { 
-    q: "¿cómo elegir un sistema de facturación electrónica para mi negocio?", 
-    a: `Para elegir un buen Sistema de Facturación Electrónica, te recomiendo analizar:
-
-🔍 Aspectos importantes:
-• Facilidad de uso e intuitivo
-• Soporte técnico responsive
-• Validación OSE garantizada  
-• Actualizaciones periódicas
-• Protección de tu información
-• Experiencia y reputación
-
-¡Cistcor cumple con todos estos puntos! ✅` 
+• Obtienes reportes de ventas y compras en segundos 📊`
   }
 ];
 
-// ✅ Configuración de Fuse.js para búsqueda flexible
+// ✅ Configurar Fuse.js
 const fuse = new Fuse(faqs, {
   keys: ["q"],
-  threshold: 0.4 // Sensibilidad de coincidencia (0 = exacto, 1 = muy flexible)
+  threshold: 0.4
 });
 
-// ✅ Historial en memoria (por usuario temporalmente)
+// ✅ Historial en memoria
 const conversations = {};
 
 // ✅ Endpoint de salud
@@ -159,15 +95,12 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
 });
 
-// ✅ Limpiar historiales antiguos (cada hora)
+// ✅ Limpiar historiales antiguos
 setInterval(() => {
   const now = Date.now();
-  const twentyFiveMinutes = 25 * 60 * 1000;
-  
-  for (const userId in conversations) {
-    if (now - conversations[userId].lastActivity > twentyFiveMinutes) {
-      delete conversations[userId];
-    }
+  const limit = 25 * 60 * 1000;
+  for (const id in conversations) {
+    if (now - conversations[id].lastActivity > limit) delete conversations[id];
   }
 }, 25 * 60 * 1000);
 
@@ -175,23 +108,18 @@ setInterval(() => {
 app.post("/api/chat", async (req, res) => {
   try {
     const { message, model, userId } = req.body;
-
-    if (!message || typeof message !== "string" || message.length > 2000) {
-      return res.status(400).json({ error: "Mensaje inválido o demasiado largo" });
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "Mensaje inválido" });
     }
 
-    // ✅ Inicializar historial si no existe
+    // Crear historial si no existe
     if (!conversations[userId]) {
-      conversations[userId] = {
-        messages: [],
-        lastActivity: Date.now()
-      };
+      conversations[userId] = { messages: [], lastActivity: Date.now() };
     }
-    
     conversations[userId].lastActivity = Date.now();
     conversations[userId].messages.push({ role: "user", content: message });
 
-    // 🔍 Buscar respuesta en FAQs con Fuse.js
+    // Buscar respuesta rápida (FAQ)
     const result = fuse.search(message);
     if (result.length > 0 && result[0].score < 0.4) {
       const faqAnswer = result[0].item.a;
@@ -199,15 +127,18 @@ app.post("/api/chat", async (req, res) => {
       return res.json({ reply: faqAnswer });
     }
 
-    // ✅ Preparar contexto dinámico (últimos 3 mensajes)
-    const history = conversations[userId].messages.slice(-3).map(m => `${m.role}: ${m.content}`).join("\n");
-    const context = `${baseContext}\n\nHistorial reciente:\n${history}`;
+    // Contexto dinámico con historial + companyContext
+    const history = conversations[userId].messages
+      .slice(-3)
+      .map(m => `${m.role}: ${m.content}`)
+      .join("\n");
 
-    // ✅ Llamada a IA (Gemma u otro modelo)
-    const selectedModel = ALLOWED_MODELS.includes(model) ? model : process.env.AIML_MODEL;
+    const selectedModel = ALLOWED_MODELS.includes(model)
+      ? model
+      : process.env.AIML_MODEL;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 40000);
 
     const response = await fetch(process.env.AIML_API_URL, {
       method: "POST",
@@ -217,13 +148,13 @@ app.post("/api/chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: selectedModel,
-          messages: [
-            ...conversations[userId].messages.slice(-3),
-            { 
-              role: "user", 
-              content: `Contexto: ${baseContext}\n\nPregunta: ${message}` 
-            }
-          ]
+        messages: [
+          ...conversations[userId].messages.slice(-3),
+          {
+            role: "user",
+            content: `Contexto general:\n${baseContext}\n\nDatos de la empresa:\n${companyContext}\n\nPregunta: ${message}`
+          }
+        ]
       }),
       signal: controller.signal,
     });
@@ -236,14 +167,13 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const data = await response.json();
-    const reply = data?.choices?.[0]?.message?.content || "No hay respuesta";
+    const reply = data?.choices?.[0]?.message?.content || "No hay respuesta.";
 
-    // ✅ Agregar respuesta al historial
     conversations[userId].messages.push({ role: "assistant", content: reply });
-
     res.json({ reply });
+
   } catch (err) {
-    console.error("Error en /api/chat:", err.message);
+    console.error("❌ Error en /api/chat:", err.message);
     if (err.name === "AbortError") {
       return res.status(504).json({ error: "Tiempo de espera agotado" });
     }
@@ -251,7 +181,7 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// ✅ Servidor
+// ✅ Iniciar servidor
 app.listen(PORT, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${PORT}`);
 });
